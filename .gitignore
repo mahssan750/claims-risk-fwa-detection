@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.DS_Store
+.streamlit/
+data/raw/*.csv
+data/processed/*.db
+data/processed/*.parquet
+artifacts/models/*.joblib
+

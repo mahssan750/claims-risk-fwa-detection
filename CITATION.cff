@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this project, please cite the software and the source dataset."
+title: "Claims Risk and FWA Detection"
+type: software
+authors:
+  - family-names: "Aboulabed"
+    given-names: "Mohamed Hassan"
+version: 1.0.0
+date-released: 2026-10-19
+url: "https://github.com/mahssan750/claims-risk-fwa-detection"
+repository-code: "https://github.com/mahssan750/claims-risk-fwa-detection"
+license: MIT
+preferred-citation:
+  type: dataset
+  title: "Medicare Fraud Detection Dataset"
+  doi: "10.5281/zenodo.18138102"
+  year: 2023
+
