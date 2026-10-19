@@ -23,16 +23,16 @@ Prioritize providers for manual claims review and demonstrate an explainable FWA
 
 | Metric | Value |
 |---|---:|
-| Precision | 0.441 |
-| Recall | 0.822 |
-| F1 | 0.576 |
-| F2 | 0.701 |
-| PR-AUC | 0.659 |
-| ROC-AUC | 0.934 |
-| True negatives | 876 |
-| False positives | 105 |
-| False negatives | 18 |
-| True positives | 83 |
+| Precision | 0.451 |
+| Recall | 0.812 |
+| F1 | 0.580 |
+| F2 | 0.700 |
+| PR-AUC | 0.663 |
+| ROC-AUC | 0.936 |
+| True negatives | 881 |
+| False positives | 100 |
+| False negatives | 19 |
+| True positives | 82 |
 
 ## Monitoring recommendations
 

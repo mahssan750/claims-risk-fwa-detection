@@ -61,7 +61,7 @@ def plot_confusion_matrix(outputs: ModelOutputs) -> None:
 def plot_feature_importance(outputs: ModelOutputs) -> None:
     top_features = outputs.feature_importance.head(12).sort_values("importance").copy()
     top_features["feature"] = top_features["feature"].str.replace("_", " ")
-    sns.barplot(data=top_features, x="importance", y="feature", hue="feature", legend=False, color="#2C7FB8")
+    sns.barplot(data=top_features, x="importance", y="feature", hue="feature", legend=False, palette="Blues_d")
     plt.title(f"Top drivers — {outputs.metrics['selected_model']}")
     plt.xlabel("Relative importance")
     plt.ylabel("")
@@ -99,10 +99,15 @@ def rule_summary() -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("flagged_claims", ascending=False)
 
 
-def plot_rule_prevalence(summary: pd.DataFrame) -> None:
-    chart_frame = summary.assign(rule=summary["rule"].str.replace("_flag", "", regex=False).str.replace("_", " "))
+def plot_rule_prevalence(rule_frame: pd.DataFrame) -> None:
+    chart_frame = rule_frame.assign(rule=rule_frame["rule"].str.replace("_flag", "", regex=False).str.replace("_", " "))
     sns.barplot(
-        data=chart_frame.sort_values("flag_rate"), x="flag_rate", y="rule", hue="rule", legend=False, color="#41AB5D"
+        data=chart_frame.sort_values("flag_rate"),
+        x="flag_rate",
+        y="rule",
+        hue="rule",
+        legend=False,
+        palette="Greens_d",
     )
     plt.gca().xaxis.set_major_formatter(lambda x, _: f"{x:.1%}")
     plt.title("Claim-level rule prevalence")
@@ -111,11 +116,16 @@ def plot_rule_prevalence(summary: pd.DataFrame) -> None:
     save_figure("rule_prevalence.png")
 
 
-def write_executive_summary(outputs: ModelOutputs, summary: pd.DataFrame) -> None:
+def claims_screened() -> int:
+    with sqlite3.connect(PATHS.database) as connection:
+        return int(connection.execute("SELECT COUNT(*) FROM claim_rule_flags").fetchone()[0])
+
+
+def write_executive_summary(outputs: ModelOutputs, rule_frame: pd.DataFrame) -> None:
     metrics = outputs.metrics
     summary_text = f"""# Executive summary
 
-The workflow screened **558,211 claims** across **{metrics["providers"]:,} providers**. The published label set identifies **{metrics["positive_providers"]:,} providers** as potential fraud cases.
+The workflow screened **{claims_screened():,} claims** across **{metrics["providers"]:,} providers**. The published label set identifies **{metrics["positive_providers"]:,} providers** as potential fraud cases.
 
 On a held-out provider test set, the combined rules + supervised + anomaly ensemble achieved:
 
@@ -126,11 +136,12 @@ On a held-out provider test set, the combined rules + supervised + anomaly ensem
 - ROC-AUC: **{metrics["roc_auc"]:.3f}**
 - False positives: **{metrics["false_positives"]}**
 - False negatives: **{metrics["false_negatives"]}**
+- Providers sent to review: **{metrics["flagged_providers"]} ({metrics["review_rate"]:.1%} of the test set)**
 
 These outputs prioritize investigation; they do not prove fraud. Analysts should validate coding, medical necessity, contracts and documentation before taking action.
 """
     (PATHS.artifacts / "executive_summary.md").write_text(summary_text, encoding="utf-8")
-    summary.to_csv(PATHS.artifacts / "claim_rule_summary.csv", index=False)
+    rule_frame.to_csv(PATHS.artifacts / "claim_rule_summary.csv", index=False)
 
 
 def create_reports(outputs: ModelOutputs) -> None:
@@ -140,6 +151,6 @@ def create_reports(outputs: ModelOutputs) -> None:
     plot_confusion_matrix(outputs)
     plot_feature_importance(outputs)
     plot_risk_distribution(outputs)
-    summary = rule_summary()
-    plot_rule_prevalence(summary)
-    write_executive_summary(outputs, summary)
+    rule_frame = rule_summary()
+    plot_rule_prevalence(rule_frame)
+    write_executive_summary(outputs, rule_frame)

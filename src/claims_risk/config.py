@@ -31,7 +31,6 @@ PATHS = ProjectPaths(Path(__file__).resolve().parents[2])
 RANDOM_SEED = 42
 
 DATASET_RECORD = "18138102"
-DATASET_DOI = "10.5281/zenodo.18138102"
 DATA_FILES = {
     "Train-1542865627584.csv": "d8784fd271fdb452fe752256ca7e9084",
     "Train_Beneficiarydata-1542865627584.csv": "3d07fc96bcca695b662086aa2e0e3e5c",

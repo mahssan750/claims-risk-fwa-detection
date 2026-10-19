@@ -1,28 +1,43 @@
 # Claims Risk and FWA Detection
 
-An end-to-end healthcare analytics project that prioritizes potentially risky Medicare providers for investigation. It combines transparent claim rules, supervised classification and unsupervised anomaly detection, then explains why each provider was flagged.
+Healthcare claims teams can receive far more cases than they can review manually. This project turns large volumes of claim records into a prioritized provider review queue, explains the main reasons behind each alert, and summarizes patterns involving payments, coding, duplicate activity and service utilization. The outputs help teams focus investigation time on higher-risk cases while keeping every final decision with a qualified reviewer.
+
+- **Business solution:** rank providers by review priority and show the evidence contributing to each score.
+- **Main insight:** a focused review group containing 16.8% of held-out providers captured 81.2% of the published potential-fraud cases.
+- **Recommended action:** review High-risk providers first, validate the supporting claims and use confirmed outcomes to improve future thresholds and models.
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![SQL](https://img.shields.io/badge/SQL-SQLite-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-[![Tests](https://img.shields.io/badge/tests-7%20passed-2EA44F)](#reproduce-the-analysis)
+[![Tests](https://img.shields.io/badge/tests-9%20passed-2EA44F)](#reproduce-the-analysis)
 [![Data DOI](https://img.shields.io/badge/data-10.5281%2Fzenodo.18138102-1682D4)](https://doi.org/10.5281/zenodo.18138102)
+
+An end-to-end healthcare analytics workflow combines transparent claim rules, supervised classification and unsupervised anomaly detection, then explains why each provider was prioritized.
 
 ## Outcome
 
-The pipeline screened **558,211 claims** from **5,410 providers**. On an untouched provider-level test set, the combined risk score captured **82.2%** of labeled potential-fraud providers while reducing the review population to **17.4%** of providers.
+The pipeline screened **558,211 claims** from **5,410 providers**. On an untouched provider-level test set, the combined risk score captured **81.2%** of labeled potential-fraud providers while reducing the review population to **16.8%** of providers.
 
 | Held-out metric | Result |
 |---|---:|
-| Recall | **82.2%** |
-| Precision | **44.1%** |
-| F2 score | **0.701** |
-| PR-AUC | **0.659** |
-| ROC-AUC | **0.934** |
-| Precision lift vs. 9.4% base rate | **4.7×** |
+| Recall | **81.2%** |
+| Precision | **45.1%** |
+| F2 score | **0.700** |
+| PR-AUC | **0.663** |
+| ROC-AUC | **0.936** |
+| Precision lift vs. 9.4% base rate | **4.8×** |
 
 The operating point intentionally favors recall: missing a risky provider is treated as more costly than sending an additional case to an analyst.
 
 ![Precision-recall curve](artifacts/figures/precision_recall_curve.png)
+
+## Business findings and actions
+
+| Finding | Business meaning | Recommended action |
+|---|---|---|
+| 182 of 1,082 held-out providers entered the review queue | The team can investigate a smaller, prioritized group instead of screening every provider | Start with the High-risk tier and record the outcome of each review |
+| Total reimbursement, deductibles and maximum reimbursement were the strongest model drivers | Financial exposure and unusually large billing patterns deserve early attention | Compare flagged providers with appropriate specialty and case-mix peers |
+| Non-positive amounts, unusual service patterns, cost outliers and coding gaps were the most frequent rules | Alerts can arise from payment adjustments or process-quality issues as well as possible FWA | Separate recoverable errors, training needs and credible FWA referrals during review |
+| False positives remain part of the operating model | A risk score supports prioritization; it is not evidence of intent | Require human validation before payment, recovery or provider action |
 
 ## What the workflow detects
 
@@ -52,7 +67,7 @@ flowchart LR
     H --> I[Risk register and dashboard]
 ```
 
-The supervised candidate is selected on validation PR-AUC. Peer cost benchmarks are learned from training providers only. The review threshold is selected on the separate validation split using F2, then reported once on the untouched test split. This keeps reference fitting and threshold tuning out of final evaluation.
+The supervised candidate is selected on validation PR-AUC. Peer cost and service-frequency benchmarks are learned from training providers only. The review threshold is selected on the separate validation split using F2, then reported once on the untouched test split. This keeps reference fitting and threshold tuning out of final evaluation.
 
 ![Top model drivers](artifacts/figures/feature_importance.png)
 

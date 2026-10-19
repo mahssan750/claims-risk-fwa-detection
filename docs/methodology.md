@@ -18,7 +18,7 @@ Python validates the four downloaded files by MD5, assigns provider-level train/
 
 ## SQL analytics
 
-SQLite implements the claim rules and provider aggregation. Peer cost reference statistics are learned from training providers only, within claim type and three-character diagnosis family when the peer group has at least 30 claims. Provider features include claim/member counts, reimbursement totals, inpatient share, diagnosis concentration and rule prevalence.
+SQLite implements the claim rules and provider aggregation. Peer cost and service-frequency references are learned from training providers only. Cost outliers are evaluated within claim type and three-character diagnosis family when the peer group has at least 30 claims. Provider features include claim/member counts, reimbursement totals, inpatient share, diagnosis concentration and rule prevalence.
 
 ## Modeling and leakage control
 

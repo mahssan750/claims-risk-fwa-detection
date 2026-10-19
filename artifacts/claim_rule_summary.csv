@@ -1,8 +1,8 @@
 rule,flagged_claims,flag_rate
 nonpositive_amount_flag,20653,0.036998554310108546
+unusual_service_pattern_flag,12665,0.022688553253160545
 cost_outlier_flag,10982,0.019673564297371424
 coding_inconsistency_flag,10453,0.01872589397199267
-unusual_service_pattern_flag,10014,0.017939453002538467
 missing_physician_flag,1508,0.0027014874303802686
 repeated_member_service_flag,30,5.3743118641517275e-05
 exact_duplicate_flag,6,1.0748623728303455e-05

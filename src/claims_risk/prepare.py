@@ -108,6 +108,7 @@ def load_provider_labels() -> pd.DataFrame:
 
 
 def assign_provider_splits(labels: pd.DataFrame) -> pd.DataFrame:
+    # Split first so SQL peer benchmarks cannot learn from validation or test providers.
     train_labels, remainder = train_test_split(
         labels,
         test_size=0.4,

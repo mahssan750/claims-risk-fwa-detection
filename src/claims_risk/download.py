@@ -22,6 +22,7 @@ def download_file(file_name: str, expected_md5: str) -> Path:
     if destination.exists() and file_md5(destination) == expected_md5:
         return destination
 
+    # A temporary suffix prevents an interrupted transfer from looking like a valid source file.
     partial = destination.with_suffix(destination.suffix + ".part")
     urllib.request.urlretrieve(download_url(file_name), partial)
     if file_md5(partial) != expected_md5:

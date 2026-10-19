@@ -69,7 +69,9 @@ class RiskScoringComponents:
     supervised_model: Pipeline
     anomaly_model: Pipeline
     anomaly_scaler: MinMaxScaler
-    importance: pd.DataFrame
+    feature_importance: pd.DataFrame
+    feature_medians: pd.Series
+    feature_scales: pd.Series
     threshold: float
 
 
@@ -122,6 +124,7 @@ def candidate_comparison(split: DataSplit) -> tuple[pd.DataFrame, dict[str, Pipe
         candidate.fit(split.train_features, split.train_labels)
         probabilities = candidate.predict_proba(split.validation_features)[:, 1]
         fitted_models[name] = candidate
+        # PR-AUC is the selection metric because potential-fraud providers are the minority class.
         rows.append(
             {
                 "model": name,
@@ -141,7 +144,7 @@ def anomaly_scores(split: DataSplit) -> AnomalyOutputs:
     )
     train_raw = -model.fit(split.train_features).decision_function(split.train_features)
     scaler = MinMaxScaler().fit(train_raw.reshape(-1, 1))
-    scores = {"train": scaler.transform(train_raw.reshape(-1, 1)).ravel()}
+    scores: dict[str, np.ndarray] = {}
     for name, feature_frame in [("validation", split.validation_features), ("test", split.test_features)]:
         raw_scores = -model.decision_function(feature_frame)
         scores[name] = np.clip(scaler.transform(raw_scores.reshape(-1, 1)).ravel(), 0, 1)
@@ -154,12 +157,14 @@ def rule_scores(feature_frame: pd.DataFrame) -> np.ndarray:
 
 
 def ensemble_scores(supervised: np.ndarray, anomaly: np.ndarray, rules: np.ndarray) -> np.ndarray:
+    # Fixed weights keep the dominant predictive signal while retaining independent rule and anomaly evidence.
     return 0.65 * supervised + 0.20 * anomaly + 0.15 * rules
 
 
 def f2_threshold(labels: pd.Series, scores: np.ndarray) -> float:
     precision, recall, thresholds = precision_recall_curve(labels, scores)
     denominator = 4 * precision[:-1] + recall[:-1]
+    # F2 favors recall so fewer risky providers are missed at the investigation stage.
     f2_values = np.divide(
         5 * precision[:-1] * recall[:-1], denominator, out=np.zeros_like(thresholds), where=denominator > 0
     )
@@ -169,6 +174,7 @@ def f2_threshold(labels: pd.Series, scores: np.ndarray) -> float:
 def classification_metrics(labels: pd.Series, scores: np.ndarray, threshold: float) -> dict[str, object]:
     predictions = (scores >= threshold).astype(int)
     matrix = confusion_matrix(labels, predictions)
+    flagged_providers = int(predictions.sum())
     return {
         "threshold": threshold,
         "precision": precision_score(labels, predictions, zero_division=0),
@@ -180,6 +186,8 @@ def classification_metrics(labels: pd.Series, scores: np.ndarray, threshold: flo
         "confusion_matrix": matrix.tolist(),
         "false_positives": int(matrix[0, 1]),
         "false_negatives": int(matrix[1, 0]),
+        "flagged_providers": flagged_providers,
+        "review_rate": flagged_providers / len(predictions),
     }
 
 
@@ -197,24 +205,36 @@ def rule_reasons(provider_row: pd.Series) -> list[str]:
         "exact_duplicate_rate": "duplicate claim pattern",
         "repeated_member_service_rate": "repeated member-service activity",
         "coding_inconsistency_rate": "coding inconsistency",
+        "inconsistent_date_rate": "inconsistent service dates",
         "cost_outlier_rate": "cost outlier",
         "unusual_service_pattern_rate": "unusual service mix",
+        "nonpositive_amount_rate": "non-positive reimbursement",
         "missing_physician_rate": "missing physician detail",
     }
     return [label for feature, label in labels.items() if provider_row[feature] > 0]
 
 
-def feature_reasons(provider_row: pd.Series, importance_frame: pd.DataFrame, medians: pd.Series) -> list[str]:
+def feature_reasons(
+    provider_row: pd.Series,
+    importance_frame: pd.DataFrame,
+    medians: pd.Series,
+    robust_scales: pd.Series,
+) -> list[str]:
     top_features = importance_frame.head(10)["feature"]
-    deviations = (provider_row[top_features] - medians[top_features]).abs() * importance_frame.set_index("feature").loc[
-        top_features, "importance"
-    ]
+    scaled_deviation = (provider_row[top_features] - medians[top_features]).abs() / robust_scales[top_features]
+    importance = importance_frame.set_index("feature").loc[top_features, "importance"]
+    deviations = scaled_deviation * importance
     return [feature.replace("_", " ") for feature in deviations.nlargest(3).index]
 
 
-def provider_reason(provider_row: pd.Series, importance_frame: pd.DataFrame, medians: pd.Series) -> str:
+def provider_reason(
+    provider_row: pd.Series,
+    importance_frame: pd.DataFrame,
+    medians: pd.Series,
+    robust_scales: pd.Series,
+) -> str:
     reasons = rule_reasons(provider_row)
-    reasons.extend(feature_reasons(provider_row, importance_frame, medians))
+    reasons.extend(feature_reasons(provider_row, importance_frame, medians, robust_scales))
     return "; ".join(dict.fromkeys(reasons))
 
 
@@ -236,8 +256,11 @@ def final_risk_register(
     register["risk_tier"] = np.where(
         combined >= threshold, "High", np.where(combined >= threshold * 0.65, "Medium", "Low")
     )
-    medians = features.median()
-    register["review_reasons"] = features.apply(provider_reason, axis=1, args=(components.importance, medians))
+    register["review_reasons"] = features.apply(
+        provider_reason,
+        axis=1,
+        args=(components.feature_importance, components.feature_medians, components.feature_scales),
+    )
     return register.sort_values("risk_score", ascending=False)
 
 
@@ -247,6 +270,39 @@ def save_model_artifacts(model: Pipeline, anomaly_model: Pipeline, anomaly_scale
     joblib.dump(model, PATHS.artifacts / "models" / "supervised_model.joblib")
     joblib.dump(anomaly_model, PATHS.artifacts / "models" / "isolation_forest.joblib")
     joblib.dump(anomaly_scaler, PATHS.artifacts / "models" / "anomaly_scaler.joblib")
+
+
+def risk_scoring_components(
+    model: Pipeline,
+    anomaly: AnomalyOutputs,
+    train_features: pd.DataFrame,
+    threshold: float,
+) -> RiskScoringComponents:
+    importance_frame = feature_importance(model, train_features.columns.tolist())
+    # Training-only IQR scaling prevents large-unit fields and held-out providers from shaping explanations.
+    feature_medians = train_features.median()
+    feature_scales = (train_features.quantile(0.75) - train_features.quantile(0.25)).replace(0, 1)
+    return RiskScoringComponents(
+        supervised_model=model,
+        anomaly_model=anomaly.model,
+        anomaly_scaler=anomaly.scaler,
+        feature_importance=importance_frame,
+        feature_medians=feature_medians,
+        feature_scales=feature_scales,
+        threshold=threshold,
+    )
+
+
+def metrics_with_run_context(
+    metrics: dict[str, object],
+    provider_frame: pd.DataFrame,
+    selected_model: str,
+) -> dict[str, object]:
+    return metrics | {
+        "providers": len(provider_frame),
+        "positive_providers": int(provider_frame["potential_fraud"].sum()),
+        "selected_model": selected_model,
+    }
 
 
 def train_and_evaluate() -> ModelOutputs:
@@ -264,20 +320,24 @@ def train_and_evaluate() -> ModelOutputs:
     test_scores = ensemble_scores(
         model.predict_proba(split.test_features)[:, 1], anomaly.split_scores["test"], rule_scores(split.test_features)
     )
-    metrics = classification_metrics(split.test_labels, test_scores, threshold)
-    metrics.update(
-        {
-            "providers": len(provider_frame),
-            "positive_providers": int(provider_frame["potential_fraud"].sum()),
-            "selected_model": comparison.iloc[0]["model"],
-        }
+    metrics = metrics_with_run_context(
+        classification_metrics(split.test_labels, test_scores, threshold),
+        provider_frame,
+        comparison.iloc[0]["model"],
     )
-    importance_frame = feature_importance(model, split.train_features.columns.tolist())
-    components = RiskScoringComponents(model, anomaly.model, anomaly.scaler, importance_frame, threshold)
+    components = risk_scoring_components(model, anomaly, split.train_features, threshold)
     register = final_risk_register(provider_frame, components)
     predictions = (test_scores >= threshold).astype(int)
     save_model_artifacts(model, anomaly.model, anomaly.scaler)
-    return ModelOutputs(metrics, comparison, register, importance_frame, split.test_labels, test_scores, predictions)
+    return ModelOutputs(
+        metrics=metrics,
+        comparison=comparison,
+        risk_register=register,
+        feature_importance=components.feature_importance,
+        test_labels=split.test_labels,
+        test_scores=test_scores,
+        test_predictions=predictions,
+    )
 
 
 def write_model_outputs(outputs: ModelOutputs) -> None:

@@ -18,11 +18,12 @@ def load_outputs() -> tuple[pd.DataFrame, pd.DataFrame, dict[str, object]]:
 
 
 def metric_row(metrics: dict[str, object]) -> None:
-    columns = st.columns(4)
+    columns = st.columns(5)
     columns[0].metric("Providers screened", f"{metrics['providers']:,}")
     columns[1].metric("Precision", f"{metrics['precision']:.1%}")
     columns[2].metric("Recall", f"{metrics['recall']:.1%}")
     columns[3].metric("PR-AUC", f"{metrics['pr_auc']:.3f}")
+    columns[4].metric("Test review rate", f"{metrics['review_rate']:.1%}")
 
 
 def main() -> None:
@@ -50,6 +51,7 @@ def main() -> None:
         "rule_score",
         "review_reasons",
     ]
+    # Published labels support evaluation but stay out of the analyst-facing review table.
     st.dataframe(
         risk_register.loc[risk_register["risk_tier"].isin(tiers), display_columns],
         use_container_width=True,
